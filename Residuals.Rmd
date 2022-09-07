@@ -1,0 +1,171 @@
+---
+title: 'Assumption Checking'
+author: "Trey McGonigle"
+date: "4/26/2022"
+output:
+  beamer_presentation: default
+  ioslides_presentation: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(eval = FALSE)
+```
+
+## Model Diagnostics  
+
+- Proportional Hazards $\rightarrow$ Schoenfeld Residuals/Test
+- Should covariates be transformed $\rightarrow$ Martingale Residuals
+- Outliers $\rightarrow$ Deviance Residuals
+- Influential Points $\rightarrow$ Delta-Beta or Score Residuals
+
+## Process for Cox Regression
+
+\begin{itemize}
+  \item Exploratory Data Analysis
+  \begin{itemize}
+    \item [-] Histograms/Boxplots
+    \item [-] Kaplan-Meier Plots
+  \end{itemize}
+  \item Cox Model
+  \begin{itemize}
+    \item [$(1)$] Verify the right form of covariates
+    \item [$(2)$] Verify proportional hazards assumption
+    \item [$(3)$] Look for interactions
+    \item [$(4)$] Variable selection
+  \end{itemize}
+  \item Check for outliers and influential observations
+  \item Interpretation
+\end{itemize}
+
+## Martingale Residuals
+
+\begin{itemize}
+  \item Used to examine whether certain covariates should be transformed
+\begin{equation*}
+  r_{M_i} = \delta_i - \hat H(t_i|x_i)
+\end{equation*}
+  \item Properties
+  \begin{itemize}
+    \item Mean zero
+    \item Uncorrelated with other MR across subjects
+    \item Range: $-\infty \text{ to } 1$
+  \end{itemize}
+\end{itemize}
+
+## Martingale Residuals
+
+- Output MR from a model w/o covariate of interest, $x_k$
+- Regress $x_k$ over rest of covariates and obtain the residuals, $\hat\epsilon_k$
+- Plot MR vs. $\hat\epsilon_k$ and fit a LOESS curve through it
+- If the LOESS curve is not linear $\rightarrow$ transform the covariate and re-check
+
+## Martingale Residuals
+
+```{r}
+fit.cox1 <- coxph(Surv(time,event)~female+age+bmi+heartrte+glucose+cursmoke
+                  +cigpday+education+sysBP+diaBP,data=FHS.complete)
+mr.fit <- glm(totchol~female+age+bmi+heartrte+glucose+cursmoke+cigpday
+              +education+sysBP+diaBP,data=FHS.complete)
+ggplot(mapping = aes(resid(mr.fit),resid(fit.cox1,type="martingale"))) +
+  geom_point() +
+  geom_smooth(method="loess") +
+  xlab("Residuals") + 
+  ylab("Martingale Residuals") +
+  labs(title="MR Plot for Total Cholesterol") +
+  theme_bw()
+```
+
+## Schoenfeld Test
+
+- Used to check the proportional hazards assumption
+- $H_0: h_1(t)=\phi \text{ } h_2(t)$ for some $\phi \in \mathbb{R}\setminus \{0,1\}$ (Proportional hazard assumption holds)  
+- $H_a: h_1(t)\neq \phi \text{ } h_2(t)$ for some time $t$  
+- Schoenfeld Test statistic: $\chi^2$ with one degree of freedom (univariate) or p degrees of freedom (overall model with p predictors)
+
+## Schoenfeld Test
+
+```{r}
+fit.cox1 <- coxph(Surv(time,event)~female+totchol+age+bmi+heartrte+glucose+cursmoke+cigpday+education+sysBP+diaBP,data=FHS.complete)
+sch.test <- cox.zph(fit.cox1)
+sch.test
+```
+
+## Deviance Residuals
+
+\begin{equation}
+  r_{D_i} = sign(r_{M_i})[-2\{r_{M_i} + \delta_i log(\delta_i - r_{M_i})\}]^{1/2}
+\end{equation}
+
+- These residuals are approximately normally distributed with mean 0 and standard deviation of 1
+- If any points lay outside (-3,3) or (-2.5,2.5) we would consider them outliers
+- Deviance residual is positive $\rightarrow$ event occurred sooner than expected
+- Deviance residual is negative $\rightarrow$ event occurred later than expected
+- Plot deviance residuals vs. linear predictor residuals
+- Investigate any outliers
+
+## Deviance Residuals
+
+```{r}
+# Calculate deviance residuals
+dresids <- residuals(fit.cox2, type="deviance")
+# Linear predictions using Cox
+lpred <- predict(fit.cox2, type="lp")
+# Plot deviance residuals vs. linear predicted values 
+ggplot() +
+  geom_point(mapping=aes(x=lpred,y=dresids)) +
+  geom_point(mapping=aes(x=lpred[which(dresids>3 | dresids < -3)],y=dresids[which(dresids>3 | dresids < -3)]),color="red") +
+  geom_abline(slope=0,intercept=3,color="red") +
+  geom_abline(slope=0,intercept=-3,color="red") +
+  labs(title="Deviance Residuals for Reduced Model") +
+  xlab("Linear Predictor") +
+  ylab("Deviance Residuals") +
+  theme_bw()
+```
+
+## Delta-Beta Residuals
+
+- Tell us which points are high leverage
+- High leverage: unusual observation with respect to the covariates
+- Calculate leverage:
+\begin{equation}
+  x_{ir} - \bar x_r(t_{(k)})
+\end{equation}
+with 
+\begin{equation}
+  \bar x_r(t_{(k)}) = \frac{\sum_{i\in R_{(k)}} x_{ir}exp(X\hat \beta)}{\sum_{i\in R_{(k)}} exp(X\hat \beta)}
+\end{equation}
+
+## Delta-Beta Residuals
+
+- We need score residuals to calculate DB residuals
+\begin{equation}
+  r_{S_{ri}} = \sum_{t_{(k)}\leq T_i}\{x_{ir}- \bar x_r(t_{(k)})\} \times \{\delta_i(t_{(k)}) - exp(X\hat\beta)d\hat H_0(t_{(k)}) \} 
+\end{equation}
+- There is a set of score residuals for each covariate
+
+## Delta-Beta Residuals
+
+- $\Delta\beta_{ri} = \hat\beta_r - \hat\beta_{r(i)} \approx \hat V_r \times r_{Si}$
+- $r_{Si} = (r_{S_{1i}},\dots,r_{S_{pi}})$, the vector or score residuals for the ith subject
+- $\hat V_r$ is the rth row of the covariance matrix for $\hat\beta$
+- Plot vs. the subject ID
+- Investigate high leverage points
+- If outliers aren't high leverage, you're all good!
+
+
+## Delta-Beta Residuals
+
+```{r}
+# Calculate delta-beta residuals
+bresids <- residuals(fit.cox2,type="dfbeta")
+
+# DB for totchole:time
+ggplot() +
+  geom_point(mapping=aes(x=1:2155,y=bresids[,10])) +
+  xlab("Patient ID") +
+  ylab("Total Cholesterol:Time - Delta Beta") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"))
+
+```
+
