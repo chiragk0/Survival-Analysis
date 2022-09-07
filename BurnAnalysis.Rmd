@@ -1,0 +1,176 @@
+---
+title: "Burn Analysis"
+author: "Chirag Kulkarni"
+date: '2022-05-03'
+output:
+  html_document:
+    toc: yes
+    toc_depth: 3
+  pdf_document:
+    toc: yes
+    toc_depth: 3
+---
+
+```{r}
+library(survival)
+library(KMsurv)
+library(tidyverse)
+library(broom)
+library(survminer)
+```
+
+```{r}
+#create different models from Z1-Z10 (try interactions too with justification) and create a kaplan-meier for each
+burn_dummy1 <- surv_fit(Surv(T1,D1)~Z1,data=burn)
+burn_dummy2 <- surv_fit(Surv(T1,D1)~Z2,data=burn)
+burn_dummy3 <- surv_fit(Surv(T1,D1)~Z3,data=burn)
+burn_dummy4 <- surv_fit(Surv(T1,D1)~Z4,data=burn)
+burn_dummy5 <- surv_fit(Surv(T1,D1)~Z5,data=burn)
+burn_dummy6 <- surv_fit(Surv(T1,D1)~Z6,data=burn)
+burn_dummy7 <- surv_fit(Surv(T1,D1)~Z7,data=burn)
+burn_dummy8 <- surv_fit(Surv(T1,D1)~Z8,data=burn)
+burn_dummy9 <- surv_fit(Surv(T1,D1)~Z9,data=burn)
+burn_dummy10 <- surv_fit(Surv(T1,D1)~Z10,data=burn)
+
+#survival plot for routine bathing vs body cleansing
+survplot1<- ggsurvplot(burn_dummy1,data=burn,
+  conf.int = TRUE,
+  legend.labs = c("Routine Bathing", "Body Cleansing"),
+  risk.table.height = 0.3,
+  risk.table = TRUE,
+  risk.table.col = "strata"
+  )
+#survival plot for male vs female
+survplot2<- ggsurvplot(burn_dummy2,data=burn,
+  conf.int = TRUE,
+  legend.labs = c("Male", "Female"),
+  risk.table.height = 0.3,
+  risk.table = TRUE,
+  risk.table.col = "strata"
+  )
+#survival plot for white vs nonwhite
+survplot3<- ggsurvplot(burn_dummy3,data=burn,
+  conf.int = TRUE,
+  legend.labs = c("Nonwhite", "White"),
+  risk.table.height = 0.3,
+  risk.table = TRUE,
+  risk.table.col = "strata"
+  )
+#survival plot for percentage of total surface area burned
+survplot4<- ggsurvplot(burn_dummy4,data=burn,
+  conf.int = TRUE,
+  legend.labs = c("Routine Bathing", "Body Cleansing"),
+  risk.table.height = 0.25,
+  risk.table = TRUE,
+  risk.table.col = "strata"
+  )
+#survival plot for burned on the head vs not
+survplot5<- ggsurvplot(burn_dummy5,data=burn,
+  conf.int = TRUE,
+  legend.labs = c("Burn on Head", "No Burn on Head"),
+  risk.table.height = 0.3,
+  risk.table = TRUE,
+  risk.table.col = "strata"
+  )
+#survival plot for burn on buttock vs not
+survplot6<- ggsurvplot(burn_dummy6,data=burn,
+  conf.int = TRUE,
+  legend.labs = c("Burn on Buttock", "No Burn on Buttock"),
+  risk.table.height = 0.3,
+  risk.table = TRUE,
+  risk.table.col = "strata"
+  )
+#survival plot for burn on trunk vs not
+survplot7<- ggsurvplot(burn_dummy7,data=burn,
+  conf.int = TRUE,
+  legend.labs = c("Burn on Trunk", "No Burn on Trunk"),
+  risk.table.height = 0.3,
+  risk.table = TRUE,
+  risk.table.col = "strata"
+  )
+#survival plot for burn on upper leg vs not
+survplot8<- ggsurvplot(burn_dummy8,data=burn,
+  conf.int = TRUE,
+  legend.labs = c("Burn on Upper Leg", "No Burn on Upper Leg"),
+  risk.table.height = 0.3,
+  risk.table = TRUE,
+  risk.table.col = "strata"
+  )
+#survival plot for burn on lower leg vs not
+survplot9<- ggsurvplot(burn_dummy9,data=burn,
+  conf.int = TRUE,
+  legend.labs = c("Burn on Lower Leg", "No Burn on Lower Leg"),
+  risk.table.height = 0.3,
+  risk.table = TRUE,
+  risk.table.col = "strata"
+  )
+#survival plot for yes or no on respiratory tract
+survplot10<- ggsurvplot(burn_dummy10,data=burn,
+  conf.int = TRUE,
+  legend.labs = c("Burn on Respiratory Tract", "No Burn on Respiratory Tract"),
+  risk.table.height = 0.3,
+  risk.table = TRUE,
+  risk.table.col = "strata"
+  )
+```
+**According to the Kaplan-Meier plots above, we can tell that Z1,Z2, and Z10 are the best to include in our Cox Regression**
+
+```{r}
+#coxph model for survival time
+burn_play <- coxph(Surv(T1,D1)~Z1+Z2,data=burn,model = TRUE)
+summary(burn_play)
+
+glance(burn_play)
+```
+**Across the 154 subjects, we observe 99 events (deaths) and censored 55 events. In addition we have a hazard ratio of 1.7339.**
+ 
+```{r}
+#test the proportional hazards assumption for a Cox regression model fit
+cox.zph(burn_play)
+#cox regression model fit
+plot(cox.zph(burn_play))
+ggcoxzph(cox.zph(burn_play))
+```
+
+```{r}
+#calculate the deviance residuals
+dresids_burn <- residuals(burn_play, type="deviance")
+#linear predictions using cox
+lpred_burn <- predict(burn_play, type="lp")
+# Plot deviance residuals vs. linear predicted values 
+ggplot() +
+  geom_point(mapping=aes(x=lpred_burn,y=dresids_burn)) +
+  geom_point(mapping=aes(x=lpred_burn[which(dresids_burn>3 | dresids_burn < -3)],y=dresids_burn[which(dresids_burn>3 | dresids_burn < -3)]),color="red") +
+  geom_abline(slope=0,intercept=3,color="red") +
+  geom_abline(slope=0,intercept=-3,color="red") +
+  labs(title="Deviance Residuals for Reduced Model") +
+  xlab("Linear Predictor") +
+  ylab("Deviance Residuals") +
+  theme_bw()
+```
+
+```{r}
+#calculate delta-beta residuals
+bresids_burn <- residuals(burn_play,type="dfbeta")
+bresids_burn
+```
+
+```{r}
+#delta-beta plots
+#change x and bresids
+db1<-ggplot() +
+  geom_point(mapping=aes(x=1:154,y=bresids_burn[,1])) +
+  xlab("Observation Number") +
+  ylab("Treatment - Delta Beta") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"))
+
+db2<-ggplot() +
+  geom_point(mapping=aes(x=1:154,y=bresids_burn[,2])) +
+  xlab("Observation Number") +
+  ylab("Gender - Delta Beta") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"))
+
+```
+
